@@ -22,123 +22,98 @@ if 'messages' not in st.session_state:
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 assistant_id = os.getenv('ASSISTANT_ID')
 
-def get_assistant_response(page_number, question):
-    """Ottiene la risposta dall'assistant"""
-    if not st.session_state.thread_id:
-        thread = client.beta.threads.create()
-        st.session_state.thread_id = thread.id
-    
-    formatted_question = f"Sono a pagina {page_number}. {question}"
-    
-    message = client.beta.threads.messages.create(
-        thread_id=st.session_state.thread_id,
-        role="user",
-        content=formatted_question
-    )
-    
-    run = client.beta.threads.runs.create(
-        thread_id=st.session_state.thread_id,
-        assistant_id=assistant_id
-    )
-    
-    while True:
-        run_status = client.beta.threads.runs.retrieve(
-            thread_id=st.session_state.thread_id,
-            run_id=run.id
-        )
-        if run_status.status == 'completed':
-            break
-        elif run_status.status == 'failed':
-            return {"safe_content": "Mi dispiace, c'è stato un errore.", "spoiler_content": "", "notes": []}
-        time.sleep(1)
-    
-    messages = client.beta.threads.messages.list(
-        thread_id=st.session_state.thread_id
-    )
-    
-    try:
-        # Cerca di parsare la risposta come JSON
-        response = json.loads(messages.data[0].content[0].text.value)
-        return response
-    except json.JSONDecodeError:
-        # Se la risposta non è in formato JSON, usa il formato standard con separatore [SPOILER ALERT]
-        full_response = messages.data[0].content[0].text.value
-        safe_content = full_response
-        spoiler_content = ""
-        
-        if "[SPOILER ALERT" in full_response:
-            parts = full_response.split("[SPOILER ALERT")
-            safe_content = parts[0]
-            spoiler_content = parts[1]
-        
-        return {
-            "safe_content": safe_content,
-            "spoiler_content": spoiler_content,
-            "notes": []
-        }
-
 st.title("🎭 Infinite Jest Assistant")
+
 st.markdown("""
     Benvenuto nell'assistente alla lettura di Infinite Jest.
-    Indica a che pagina sei arrivato e fai le tue domande!
+    
+    Per evitare spoiler e fornirti risposte precise, ho bisogno di sapere esattamente a che punto della lettura sei arrivato: Foster Wallace è un dito al culo e non ha numeri di capitoli o di pagina, quindi dobbiamo farci furbi.
+    Per favore, copia e incolla una frase significativa dell'ultimo passaggio che hai letto (almeno 10 parole).
+    Questo mi aiuterà a contestualizzare meglio la tua posizione nel libro e a darti risposte pertinenti.
 """)
 
-with st.sidebar:
-    st.header("ℹ️ Informazioni")
-    st.markdown("""
-        Questo assistente ti aiuta nella lettura di Infinite Jest,
-        fornendo risposte basate sul punto in cui ti trovi nel libro
-        per evitare spoiler.
-    """)
-    
-    if st.button("Nuova Conversazione"):
-        st.session_state.thread_id = None
-        st.session_state.messages = []
-        st.rerun()
+# Input utente
+anchor_text = st.text_area(
+    "Copia una frase significativa dell'ultimo passaggio letto:",
+    help="Incolla qui una frase di almeno 10 parole dall'ultimo passaggio che hai letto. Questo mi aiuterà a capire esattamente dove ti trovi nel libro.",
+    max_chars=500
+)
 
-col1, col2 = st.columns([1, 4])
-with col1:
-    page_number = st.number_input("Pagina attuale:", min_value=1, max_value=1079, value=1)
-with col2:
-    question = st.text_input("La tua domanda:")
+question = st.text_input(
+    "La tua domanda:",
+    help="Cosa vorresti sapere su personaggi, temi, eventi o note fino al punto che hai raggiunto?"
+)
+
+# Validazione input
+def validate_anchor(text):
+    words = text.split()
+    return len(words) >= 10
 
 if st.button("Invia domanda"):
-    if question:
+    if not anchor_text:
+        st.error("Per favore, inserisci una frase dal testo per aiutarmi a capire dove ti trovi nella lettura.")
+    elif not validate_anchor(anchor_text):
+        st.error("La frase deve essere di almeno 10 parole per essere sufficientemente precisa.")
+    elif not question:
+        st.error("Per favore, inserisci una domanda.")
+    else:
         with st.spinner("Elaboro la risposta..."):
-            response = get_assistant_response(page_number, question)
+            # Formato la richiesta includendo l'ancora testuale
+            formatted_question = f"""ANCORA DI RIFERIMENTO NEL TESTO: "{anchor_text}"
+            
+DOMANDA: {question}"""
+            
+            if not st.session_state.thread_id:
+                thread = client.beta.threads.create()
+                st.session_state.thread_id = thread.id
+            
+            message = client.beta.threads.messages.create(
+                thread_id=st.session_state.thread_id,
+                role="user",
+                content=formatted_question
+            )
+            
+            run = client.beta.threads.runs.create(
+                thread_id=st.session_state.thread_id,
+                assistant_id=assistant_id
+            )
+            
+            while True:
+                run_status = client.beta.threads.runs.retrieve(
+                    thread_id=st.session_state.thread_id,
+                    run_id=run.id
+                )
+                if run_status.status == 'completed':
+                    break
+                elif run_status.status == 'failed':
+                    st.error("Mi dispiace, c'è stato un errore nel processare la tua richiesta.")
+                    break
+                time.sleep(1)
+            
+            messages = client.beta.threads.messages.list(
+                thread_id=st.session_state.thread_id
+            )
+            
+            response = messages.data[0].content[0].text.value
+            
+            # Salva nella cronologia
             st.session_state.messages.append({
-                "role": "user", 
-                "content": question
+                "role": "user",
+                "content": formatted_question
             })
             st.session_state.messages.append({
-                "role": "assistant", 
+                "role": "assistant",
                 "content": response
             })
 
-# Visualizza la cronologia dei messaggi
-st.markdown("### Cronologia")
-for msg in reversed(st.session_state.messages):
-    if msg["role"] == "user":
-        st.markdown("**Tu:**")
-        st.markdown(msg["content"])
-    else:
-        st.markdown("**Assistant:**")
-        # Contenuto sicuro
-        st.markdown(msg["content"]["safe_content"])
-        
-        # Spoiler con expander
-        if msg["content"]["spoiler_content"]:
-            with st.expander("👀 Mostra spoiler"):
-                st.markdown(msg["content"]["spoiler_content"])
-        
-        # Note con expander
-        if msg["content"]["notes"]:
-            with st.expander("📝 Mostra note"):
-                for note in msg["content"]["notes"]:
-                    st.markdown(f"**Nota {note['number']}** (riferimento: p.{note['reference_page']})")
-                    st.markdown(note["safe_content"])
-                    if note["spoiler_content"]:
-                        with st.expander("👀 Spoiler della nota"):
-                            st.markdown(note["spoiler_content"])
-    
-    st.markdown("---")
+# Visualizzazione cronologia
+if st.session_state.messages:
+    st.markdown("### Cronologia")
+    for msg in reversed(st.session_state.messages):
+        if msg["role"] == "user":
+            st.markdown("**Tu:**")
+            st.markdown(msg["content"])
+        else:
+            st.markdown("**Assistant:**")
+            st.markdown(msg["content"])
+        st.markdown("---")
