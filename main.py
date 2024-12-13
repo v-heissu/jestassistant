@@ -27,17 +27,33 @@ st.markdown("""
         color: #ffffff;
     }
     
-    /* Bottom Navigation Bar */
+    /* Bottom Navigation Bar ottimizzata */
     .bottom-nav {
         display: none;
         position: fixed;
         bottom: 0;
         left: 0;
-        right: 0;
+        width: 200px;
         background: #1e1e1e;
         box-shadow: 0 -2px 10px rgba(0,0,0,0.2);
         z-index: 1000;
         padding: 10px;
+    }
+    
+    .bottom-nav button {
+        margin-right: 8px;
+        padding: 8px 12px;
+        border-radius: 20px;
+        border: none;
+        background: #4CAF50;
+        color: white;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    
+    .bottom-nav button:hover {
+        background: #45a049;
+        box-shadow: 0 0 15px rgba(76, 175, 80, 0.4);
     }
     
     /* Box citazione */
@@ -78,7 +94,6 @@ st.markdown("""
     @media (max-width: 768px) {
         .bottom-nav {
             display: flex;
-            justify-content: space-around;
             align-items: center;
         }
         
@@ -113,8 +128,6 @@ if 'session_start' not in st.session_state:
     st.session_state.session_start = datetime.now()
 if 'compact_mode' not in st.session_state:
     st.session_state.compact_mode = False
-if 'current_view' not in st.session_state:
-    st.session_state.current_view = 'new_question'
 
 # Client OpenAI
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
@@ -243,10 +256,10 @@ if st.session_state.messages:
                 st.markdown(msg["content"])
         st.markdown("---")
 
-# Bottom navigation per mobile
+# Bottom navigation ottimizzata per mobile
 st.markdown("""
 <div class="bottom-nav">
-    <button onclick="window.scrollTo(0,0)">⬆️ Su</button>
-    <button onclick="document.querySelector('.compact-mode').click()">📱 Compatta</button>
+    <button onclick="window.scrollTo(0,0)">⬆️</button>
+    <button onclick="document.querySelector('.compact-mode').click()">📱</button>
 </div>
 """, unsafe_allow_html=True)
