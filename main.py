@@ -3,11 +3,10 @@ from openai import OpenAI
 import os
 from dotenv import load_dotenv
 import time
+import json
 
-# Carica le variabili d'ambiente
 load_dotenv()
 
-# Configurazione della pagina
 st.set_page_config(
     page_title="Infinite Jest Assistant",
     page_icon="📚",
@@ -20,38 +19,28 @@ if 'thread_id' not in st.session_state:
 if 'messages' not in st.session_state:
     st.session_state.messages = []
 
-# Inizializzazione client OpenAI
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
-assistant_id = os.getenv('ASSISTANT_ID')  # Da configurare dopo aver creato l'assistant
-
-def create_thread():
-    """Crea un nuovo thread se non esiste"""
-    if not st.session_state.thread_id:
-        thread = client.beta.threads.create()
-        st.session_state.thread_id = thread.id
+assistant_id = os.getenv('ASSISTANT_ID')
 
 def get_assistant_response(page_number, question):
     """Ottiene la risposta dall'assistant"""
     if not st.session_state.thread_id:
-        create_thread()
+        thread = client.beta.threads.create()
+        st.session_state.thread_id = thread.id
     
-    # Formatta il messaggio con il numero di pagina
     formatted_question = f"Sono a pagina {page_number}. {question}"
     
-    # Invia il messaggio
     message = client.beta.threads.messages.create(
         thread_id=st.session_state.thread_id,
         role="user",
         content=formatted_question
     )
     
-    # Avvia la run
     run = client.beta.threads.runs.create(
         thread_id=st.session_state.thread_id,
         assistant_id=assistant_id
     )
     
-    # Attendi la risposta
     while True:
         run_status = client.beta.threads.runs.retrieve(
             thread_id=st.session_state.thread_id,
@@ -60,25 +49,40 @@ def get_assistant_response(page_number, question):
         if run_status.status == 'completed':
             break
         elif run_status.status == 'failed':
-            return "Mi dispiace, c'è stato un errore nel processare la tua richiesta."
+            return {"safe_content": "Mi dispiace, c'è stato un errore.", "spoiler_content": "", "notes": []}
         time.sleep(1)
     
-    # Ottieni i messaggi
     messages = client.beta.threads.messages.list(
         thread_id=st.session_state.thread_id
     )
     
-    # Ritorna l'ultima risposta
-    return messages.data[0].content[0].text.value
+    try:
+        # Cerca di parsare la risposta come JSON
+        response = json.loads(messages.data[0].content[0].text.value)
+        return response
+    except json.JSONDecodeError:
+        # Se la risposta non è in formato JSON, usa il formato standard con separatore [SPOILER ALERT]
+        full_response = messages.data[0].content[0].text.value
+        safe_content = full_response
+        spoiler_content = ""
+        
+        if "[SPOILER ALERT" in full_response:
+            parts = full_response.split("[SPOILER ALERT")
+            safe_content = parts[0]
+            spoiler_content = parts[1]
+        
+        return {
+            "safe_content": safe_content,
+            "spoiler_content": spoiler_content,
+            "notes": []
+        }
 
-# UI Layout
 st.title("🎭 Infinite Jest Assistant")
 st.markdown("""
     Benvenuto nell'assistente alla lettura di Infinite Jest.
     Indica a che pagina sei arrivato e fai le tue domande!
 """)
 
-# Sidebar per informazioni e configurazione
 with st.sidebar:
     st.header("ℹ️ Informazioni")
     st.markdown("""
@@ -92,24 +96,24 @@ with st.sidebar:
         st.session_state.messages = []
         st.rerun()
 
-# Input utente
 col1, col2 = st.columns([1, 4])
 with col1:
     page_number = st.number_input("Pagina attuale:", min_value=1, max_value=1079, value=1)
 with col2:
     question = st.text_input("La tua domanda:")
 
-# Pulsante per inviare la domanda
 if st.button("Invia domanda"):
     if question:
         with st.spinner("Elaboro la risposta..."):
             response = get_assistant_response(page_number, question)
-            
-            # Aggiungi messaggi alla cronologia
-            st.session_state.messages.append({"role": "user", "content": question})
-            st.session_state.messages.append({"role": "assistant", "content": response})
-    else:
-        st.warning("Per favore, inserisci una domanda.")
+            st.session_state.messages.append({
+                "role": "user", 
+                "content": question
+            })
+            st.session_state.messages.append({
+                "role": "assistant", 
+                "content": response
+            })
 
 # Visualizza la cronologia dei messaggi
 st.markdown("### Cronologia")
@@ -119,5 +123,22 @@ for msg in reversed(st.session_state.messages):
         st.markdown(msg["content"])
     else:
         st.markdown("**Assistant:**")
-        st.markdown(msg["content"])
+        # Contenuto sicuro
+        st.markdown(msg["content"]["safe_content"])
+        
+        # Spoiler con expander
+        if msg["content"]["spoiler_content"]:
+            with st.expander("👀 Mostra spoiler"):
+                st.markdown(msg["content"]["spoiler_content"])
+        
+        # Note con expander
+        if msg["content"]["notes"]:
+            with st.expander("📝 Mostra note"):
+                for note in msg["content"]["notes"]:
+                    st.markdown(f"**Nota {note['number']}** (riferimento: p.{note['reference_page']})")
+                    st.markdown(note["safe_content"])
+                    if note["spoiler_content"]:
+                        with st.expander("👀 Spoiler della nota"):
+                            st.markdown(note["spoiler_content"])
+    
     st.markdown("---")
