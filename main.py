@@ -15,30 +15,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# JavaScript per swipe e interazioni touch
-swipe_js = """
-<script src="https://hammerjs.github.io/dist/hammer.min.js"></script>
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    const mainContent = document.querySelector('.main');
-    const hammer = new Hammer(mainContent);
-    
-    hammer.on('swipeleft swiperight', function(e) {
-        const views = ['new_question', 'history'];
-        const currentView = window.sessionStorage.getItem('current_view') || 'new_question';
-        const currentIndex = views.indexOf(currentView);
-        
-        if (e.type === 'swipeleft' && currentIndex < views.length - 1) {
-            window.sessionStorage.setItem('current_view', views[currentIndex + 1]);
-        } else if (e.type === 'swiperight' && currentIndex > 0) {
-            window.sessionStorage.setItem('current_view', views[currentIndex - 1]);
-        }
-        window.location.reload();
-    });
-});
-</script>
-"""
-
 # Stile CSS personalizzato con ottimizzazioni mobile
 st.markdown("""
 <style>
@@ -64,13 +40,22 @@ st.markdown("""
         padding: 10px;
     }
     
-    /* Box citazione e altri stili esistenti... */
+    /* Box citazione */
     .quote-box {
         border-radius: 8px;
         padding: 15px;
         margin: 15px 0;
         font-family: 'Courier New', monospace;
         transition: all 0.3s ease;
+    }
+    .quote-valid {
+        background-color: rgba(76, 175, 80, 0.1);
+        border: 2px solid #4CAF50;
+        box-shadow: 0 0 10px rgba(76, 175, 80, 0.2);
+    }
+    .quote-invalid {
+        background-color: rgba(244, 67, 54, 0.1);
+        border: 2px solid #F44336;
     }
     
     /* Modalità compatta per risposte */
@@ -79,7 +64,6 @@ st.markdown("""
         overflow: hidden;
         position: relative;
     }
-    
     .compact-response::after {
         content: '';
         position: absolute;
@@ -109,27 +93,16 @@ st.markdown("""
         .stButton>button {
             width: 100%;
         }
+        
+        .word-counter {
+            font-size: 0.7em;
+            padding: 3px 6px;
+        }
     }
 </style>
-
-<!-- Bottom Navigation HTML -->
-<div class="bottom-nav">
-    <button onclick="setView('new_question')" class="nav-btn">
-        📝 Nuova
-    </button>
-    <button onclick="setView('history')" class="nav-btn">
-        📚 Storia
-    </button>
-    <button onclick="document.querySelector('.compact-mode').click()" class="nav-btn">
-        📱 Compatta
-    </button>
-</div>
 """, unsafe_allow_html=True)
 
-# Inject swipe JavaScript
-st.components.v1.html(swipe_js, height=0)
-
-# Inizializzazione stato
+# Inizializzazione stati
 if 'thread_id' not in st.session_state:
     st.session_state.thread_id = None
 if 'messages' not in st.session_state:
@@ -147,15 +120,57 @@ if 'current_view' not in st.session_state:
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 assistant_id = os.getenv('ASSISTANT_ID')
 
-# Funzioni esistenti...
 def get_assistant_response(quote, question):
-    # ... [il codice della funzione rimane invariato]
-    pass
+    if not st.session_state.thread_id:
+        thread = client.beta.threads.create()
+        st.session_state.thread_id = thread.id
+    
+    formatted_question = f"""PUNTO DI RIFERIMENTO: "{quote}"
+    
+DOMANDA: {question}"""
+    
+    message = client.beta.threads.messages.create(
+        thread_id=st.session_state.thread_id,
+        role="user",
+        content=formatted_question
+    )
+    
+    run = client.beta.threads.runs.create(
+        thread_id=st.session_state.thread_id,
+        assistant_id=assistant_id
+    )
+    
+    while True:
+        run_status = client.beta.threads.runs.retrieve(
+            thread_id=st.session_state.thread_id,
+            run_id=run.id
+        )
+        if run_status.status == 'completed':
+            break
+        elif run_status.status == 'failed':
+            return "Mi dispiace, c'è stato un errore nel processare la tua richiesta."
+        time.sleep(1)
+    
+    messages = client.beta.threads.messages.list(
+        thread_id=st.session_state.thread_id
+    )
+    
+    return messages.data[0].content[0].text.value
 
 # Layout principale
-st.title("🎭 Infinite Jest Assistant")
+st.title("📚 Infinite Jest Assistant")
 
-# Sidebar (visibile solo su desktop)
+st.markdown("""
+    👋 Un supporto (emotivo) alla lettura di **Infinite Jest** di David Foster Wallace, con meno bestemmie.
+
+    **Il problema:** Il libro non ha una numerazione standard dei capitoli o delle pagine.
+    
+    **La soluzione:** Inserisci una frase significativa dell'ultimo passaggio letto.
+    
+    **Perché?** Per poterti dare risposte pertinenti ed evitare spoiler involontari.
+""")
+
+# Sidebar (desktop only)
 with st.sidebar:
     with st.expander("📊 Statistiche", expanded=False):
         col1, col2 = st.columns(2)
@@ -165,63 +180,73 @@ with st.sidebar:
             time_elapsed = datetime.now() - st.session_state.session_start
             st.metric("Minuti", f"{time_elapsed.seconds//60}")
     
-    if st.button("🔄 Reset"):
+    if st.button("🔄 Ricomincia"):
         st.session_state.clear()
         st.rerun()
 
-# Toggle modalità compatta
-st.checkbox('Modalità compatta', key='compact_mode', value=st.session_state.compact_mode)
+# Toggle visualizzazione compatta
+st.checkbox('Visualizzazione compatta', key='compact_mode', value=st.session_state.compact_mode)
 
-# Main content area basata sulla vista corrente
-if st.session_state.current_view == 'new_question':
-    st.markdown("""
-    Benvenuto nell'assistente alla lettura di **Infinite Jest**!
+# Area principale
+quote = st.text_area(
+    "Citazione dall'ultimo passaggio letto (minimo 10 parole):",
+    height=100,
+    help="Inserisci una frase che ti aiuti a ricordare dove sei arrivato"
+)
 
-    **Il problema:** Foster Wallace è un dito al culo e non ha numeri di capitoli o di pagina.
-    
-    **La soluzione:** Copia e incolla una frase significativa dell'ultimo passaggio che hai letto.
-    """)
-    
-    quote = st.text_area(
-        "Citazione (min 10 parole):",
-        height=100
-    )
-    
-    if quote:
-        word_count = len(quote.split())
-        is_valid = word_count >= 10
-        if not is_valid:
-            st.warning(f"⚠️ Servono almeno 10 parole ({word_count}/10)")
+if quote:
+    word_count = len(quote.split())
+    is_valid = word_count >= 10
+    if not is_valid:
+        st.warning(f"⚠️ Servono almeno 10 parole ({word_count}/10)")
+    else:
+        st.success("✅ Citazione valida!")
+
+question = st.text_input(
+    "La tua domanda:",
+    help="Cosa vorresti sapere su personaggi, temi, eventi o note?"
+)
+
+if st.button("📤 Invia", disabled=not (quote and len(quote.split()) >= 10 and question)):
+    with st.spinner("🤔 Ci penso..."):
+        response = get_assistant_response(quote, question)
+        st.session_state.total_questions += 1
+        
+        st.session_state.messages.append({
+            "role": "user",
+            "content": {"quote": quote, "question": question}
+        })
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": response
+        })
+
+# Cronologia
+if st.session_state.messages:
+    st.markdown("### 📚 Cronologia")
+    for msg in reversed(st.session_state.messages):
+        if msg["role"] == "user":
+            st.markdown("**Tu:**")
+            with st.expander("Mostra citazione"):
+                st.markdown(f'<div class="quote-box quote-valid">{msg["content"]["quote"]}</div>', 
+                    unsafe_allow_html=True)
+            st.markdown(msg["content"]["question"])
         else:
-            st.success("✅ Citazione valida!")
-    
-    question = st.text_input("La tua domanda:")
-    
-    if st.button("📤 Invia", disabled=not (quote and len(quote.split()) >= 10 and question)):
-        # ... [logica invio domanda invariata]
-        pass
+            st.markdown("**Assistant:**")
+            if "[SPOILER ALERT" in msg["content"]:
+                safe_content, spoiler_content = msg["content"].split("[SPOILER ALERT", 1)
+                st.markdown(safe_content)
+                with st.expander("👀 Spoiler"):
+                    st.markdown(f'<div class="spoiler">{spoiler_content}</div>', 
+                        unsafe_allow_html=True)
+            else:
+                st.markdown(msg["content"])
+        st.markdown("---")
 
-else:  # Vista cronologia
-    if st.session_state.messages:
-        for msg in reversed(st.session_state.messages):
-            with st.expander(
-                f"Q: {msg['content']['question'][:30]}..." if msg['role'] == 'user' else "R: Risposta",
-                expanded=not st.session_state.compact_mode
-            ):
-                # ... [visualizzazione messaggi con gestione compact_mode]
-                if msg['role'] == 'user':
-                    st.markdown(f"**Citazione:** {msg['content']['quote']}")
-                    st.markdown(f"**Domanda:** {msg['content']['question']}")
-                else:
-                    content_class = "compact-response" if st.session_state.compact_mode else ""
-                    st.markdown(f'<div class="{content_class}">{msg["content"]}</div>', unsafe_allow_html=True)
-
-# Gestione swipe e bottom navigation
-st.components.v1.html("""
-<script>
-function setView(view) {
-    window.sessionStorage.setItem('current_view', view);
-    window.location.reload();
-}
-</script>
-""", height=0)
+# Bottom navigation per mobile
+st.markdown("""
+<div class="bottom-nav">
+    <button onclick="window.scrollTo(0,0)">⬆️ Su</button>
+    <button onclick="document.querySelector('.compact-mode').click()">📱 Compatta</button>
+</div>
+""", unsafe_allow_html=True)
