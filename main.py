@@ -27,17 +27,6 @@ st.markdown("""
         color: #ffffff;
     }
     
-    /* ASCII Art */
-    .dfw-ascii {
-        font-family: monospace;
-        white-space: pre;
-        font-size: 10px;
-        line-height: 1.2;
-        color: #4CAF50;
-        text-align: left;
-        margin-bottom: 20px;
-    }
-    
     /* Box citazione */
     .quote-box {
         border-radius: 8px;
@@ -88,43 +77,8 @@ st.markdown("""
         background-color: #45a049;
         box-shadow: 0 0 15px rgba(76, 175, 80, 0.4);
     }
-    
-    /* Header decorativo */
-    .header-container {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 20px;
-        background-color: #2d2d2d;
-        border-radius: 10px;
-        margin-bottom: 20px;
-    }
-    
-    /* Timeline visiva */
-    .timeline {
-        margin: 20px 0;
-        padding: 10px;
-        background: linear-gradient(90deg, #4CAF50 var(--progress), #2d2d2d var(--progress));
-        border-radius: 20px;
-    }
 </style>
 """, unsafe_allow_html=True)
-
-# ASCII Art migliorato di DFW
-dfw_ascii = """
-    ⠀⠀⠀⠀⠀⣀⣤⣴⣶⣶⣶⣶⣦⣤⣀⠀⠀⠀⠀⠀
-    ⠀⠀⢀⣴⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣦⡀⠀⠀
-    ⠀⣴⣿⣿⣿⣿⣿⣿⠟⠛⠛⠻⣿⣿⣿⣿⣿⣿⣦⠀
-    ⣼⣿⣿⣿⣿⣿⠏⠀⠀⠀⠀⠀⠈⢻⣿⣿⣿⣿⣿⣧
-    ⣿⣿⣿⣿⣿⠏⠀⠀⠀⠀⠀⠀⠀⠀⢻⣿⣿⣿⣿⣿
-    ⣿⣿⣿⣿⡏⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⣿⣿⣿⣿
-    ⣿⣿⣿⣿⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⣿⣿⣿⣿
-    ⣿⣿⣿⣿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣿⣿⣿⣿⣿
-    ⢿⣿⣿⣿⡄⠀⠀⠀⠀⠀⠀⠀⠀⢀⣾⣿⣿⣿⣿⡿
-    ⠈⢿⣿⣿⣿⣄⠀⠀⠀⠀⠀⠀⢀⣼⣿⣿⣿⣿⡿⠁
-    ⠀⠀⠻⣿⣿⣿⣷⣄⡀⠀⢀⣠⣾⣿⣿⣿⡿⠟⠁⠀
-    ⠀⠀⠀⠈⠙⠛⠿⢿⣿⣿⣿⡿⠿⠛⠋⠁⠀⠀⠀⠀
-"""
 
 # Inizializzazione client e variabili di sessione
 client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
@@ -178,11 +132,22 @@ DOMANDA: {question}"""
     return messages.data[0].content[0].text.value
 
 # Layout principale
-col1, col2 = st.columns([3, 1])
-with col1:
-    st.title("🎭 Infinite Jest Assistant")
-with col2:
-    st.markdown(f'<div class="dfw-ascii">{dfw_ascii}</div>', unsafe_allow_html=True)
+st.title("🎭 Infinite Jest Assistant")
+
+st.markdown("""
+    Benvenuto nell'assistente alla lettura di **Infinite Jest**!
+
+    Per evitare spoiler e fornirti risposte precise, ho bisogno di sapere esattamente a che punto della lettura sei arrivato. 
+    
+    **Il problema:** Foster Wallace è un dito al culo e non ha numeri di capitoli o di pagina, quindi dobbiamo farci furbi.
+    
+    **La soluzione:** Copia e incolla una frase significativa dell'ultimo passaggio che hai letto (almeno 10 parole). 
+    
+    **Perché?** Questo mi aiuterà a:
+    * contestualizzare meglio la tua posizione nel libro 
+    * darti risposte pertinenti
+    * evitare spoiler accidentali
+""")
 
 # Sidebar con statistiche e info
 with st.sidebar:
@@ -205,14 +170,6 @@ with st.sidebar:
     - Sii specifico nelle domande
     - Esplora i collegamenti
     """)
-
-# Area principale
-st.markdown("""
-    Per evitare spoiler e fornirti risposte precise, ho bisogno di sapere esattamente a che punto della lettura sei 
-    arrivato: Foster Wallace è un dito al culo e non ha numeri di capitoli o di pagina, quindi dobbiamo farci furbi. 
-    Per favore, copia e incolla una frase significativa dell'ultimo passaggio che hai letto (almeno 10 parole). 
-    Questo mi aiuterà a contestualizzare meglio la tua posizione nel libro e a darti risposte pertinenti.
-""")
 
 # Input con validazione e contatore parole
 quote = st.text_area(
